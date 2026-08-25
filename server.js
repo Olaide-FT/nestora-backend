@@ -21,17 +21,18 @@ app.use(express.json())
 app.use(morgan("dev"))
 app.use(express.urlencoded({ extended: true }));
 
-const allowedOrigins = [
-  "http://localhost:5173",
-  "https://nestora-lake.vercel.app/",
-];
+// const allowedOrigins = [
+//   "http://localhost:5173",
+//   "https://nestora-lake.vercel.app/",
+// ];
 
-if (process.env.NODE_ENV === 'production' && process.env.CLIENT_URL) {
-  app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
-} else {
-  app.use(cors({ origin: allowedOrigins, credentials: true }));
-}
+// if (process.env.NODE_ENV === 'production' && process.env.CLIENT_URL) {
+//   app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
+// } else {
+//   app.use(cors({ origin: allowedOrigins, credentials: true }));
+// }
 
+app.use(cors());
 // ({ origin: allowedOrigins, credentials: true })
 
 app.use('/api', userRoutes);
