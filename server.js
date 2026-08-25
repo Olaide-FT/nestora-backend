@@ -32,6 +32,8 @@ if (process.env.NODE_ENV === 'production' && process.env.CLIENT_URL) {
   app.use(cors({ origin: allowedOrigins, credentials: true }));
 }
 
+// ({ origin: allowedOrigins, credentials: true })
+
 app.use('/api', userRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/properties", propertyRoutes);
