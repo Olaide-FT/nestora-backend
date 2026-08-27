@@ -5,6 +5,7 @@ const Inquiry = require("../models/inquiry.model");
 
 const sendApprovalEmail = require("../utils/sendApproval");
 const sendRejectEmail = require("../utils/sendReject");
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const getDashboardStats = async (req, res) => {
     try {
@@ -140,19 +141,19 @@ const getAllUsers = async (req, res) => {
             filter.$or = [
                 {
                     firstName: {
-                        $regex: search,
+                        $regex: escapeRegex(search),
                         $options: "i",
                     },
                 },
                 {
                     lastName: {
-                        $regex: search,
+                        $regex: escapeRegex(search),
                         $options: "i",
                     },
                 },
                 {
                     email: {
-                        $regex: search,
+                        $regex: escapeRegex(search),
                         $options: "i",
                     },
                 },

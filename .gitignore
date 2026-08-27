@@ -1,4 +1,8 @@
 node_modules/
 .env
 .env.local
+.env.production
 package-lock.json
+*.log
+npm-debug.log*
+.DS_Store

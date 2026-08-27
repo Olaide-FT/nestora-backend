@@ -1,8 +1,9 @@
 const Inquiry = require("../models/inquiry.model");
 const Property = require("../models/property.model");
+const User = require("../models/user.model");
 const sendMail = require("../services/nodemailer")
-const sendInquiryEmail = require("../utils/sendCreate");
-const sendInquiryResponseEmail = require("../utils/sendInquiry");
+const sendInquiryEmail = require("../utils/sendInquiryNotification");
+const sendInquiryResponseEmail = require("../utils/sendInquiryResponse");
 const createInquiry = async (req, res) => {
     try {
         const { propertyId, message } = req.body;
@@ -11,10 +12,12 @@ const createInquiry = async (req, res) => {
             return res.status(400).json({message: "Property ID and message are required"});
         }
 
-        const buyer = req.user;
+        // Fetch full buyer profile from DB — JWT payload only carries userId and role,
+        // so phone and email must be retrieved from the database.
+        const buyer = await User.findById(req.user.userId).select("firstName lastName email phone");
 
-        if (!buyer.phone || !buyer.email) {
-            return res.status(400).json({message: "Please update your profile with your phone number and email"});
+        if (!buyer) {
+            return res.status(404).json({ message: "Buyer account not found" });
         }
 
         const property = await Property.findOne({  _id: propertyId, approvalStatus: "approved", availabilityStatus: "available"})

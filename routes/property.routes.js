@@ -17,7 +17,7 @@ router.post("/create",protect,authorize("owner"),upload.array("images", 10),crea
 
 router.get("/owner/my-properties",protect,authorize("owner"),getMyProperties);
 
-router.put("/:id",protect,authorize("owner"),updateProperty);
+router.put("/:id",protect,authorize("owner"),upload.array("images", 10),updateProperty);
 
 router.put("/:id/availability",protect,authorize("owner"),updateAvailabilityStatus);
 

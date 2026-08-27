@@ -3,6 +3,7 @@ const dotenv = require("dotenv");
 const morgan = require("morgan");
 // const cookieParser = require("cookie-parser");
 const cors = require("cors");
+const rateLimit = require("express-rate-limit");
 
 const userRoutes = require("./routes/user.route");
 const authRoutes = require("./routes/auth.routes");
@@ -21,32 +22,91 @@ app.use(express.json())
 app.use(morgan("dev"))
 app.use(express.urlencoded({ extended: true }));
 
-// const allowedOrigins = [
-//   "http://localhost:5173",
-//   "https://nestora-lake.vercel.app/",
-// ];
+// Allow requests only from known frontend origins.
+// In production CLIENT_URL is set via environment variable.
+// In development both the Vite dev server and localhost variants are allowed.
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  process.env.CLIENT_URL,
+].filter(Boolean); // remove undefined if CLIENT_URL is not set
 
-// if (process.env.NODE_ENV === 'production' && process.env.CLIENT_URL) {
-//   app.use(cors({ origin: process.env.CLIENT_URL, credentials: true }));
-// } else {
-//   app.use(cors({ origin: allowedOrigins, credentials: true }));
-// }
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. curl, Postman, server-to-server)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      callback(new Error(`CORS policy: origin ${origin} is not allowed`));
+    },
+    credentials: true,
+  })
+);
 
-app.use(cors());
-// ({ origin: allowedOrigins, credentials: true })
+// Strict limiter for sensitive auth endpoints — 10 attempts per 15 minutes per IP.
+// Prevents brute-force attacks on login, registration, and OTP endpoints.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many attempts, please try again after 15 minutes" },
+});
+
+// General limiter for all other API routes — 100 requests per 15 minutes per IP.
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests, please slow down" },
+});
 
 app.use('/api', userRoutes);
+app.use("/api/auth/register", authLimiter);
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/verify-email", authLimiter);
+app.use("/api/auth/regenerate-otp", authLimiter);
 app.use("/api/auth", authRoutes);
-app.use("/api/properties", propertyRoutes);
-app.use("/api/favorites", favoriteRoutes);
-app.use("/api/admin", adminRoutes);
-app.use("/api/inquiries", inquiryRoutes);
+app.use("/api/properties", generalLimiter, propertyRoutes);
+app.use("/api/favorites", generalLimiter, favoriteRoutes);
+app.use("/api/admin", generalLimiter, adminRoutes);
+app.use("/api/inquiries", generalLimiter, inquiryRoutes);
+
+app.use((req, res) => {
+  res.status(404).json({ message: "Route not found" });
+});
+
+app.use((error, req, res, next) => {
+  console.error("Request error:", error);
+
+  if (error.name === "MulterError") {
+    return res.status(400).json({ message: error.message });
+  }
+
+  if (error.message === "Only JPEG, PNG, and WEBP files are allowed") {
+    return res.status(400).json({ message: error.message });
+  }
+
+  return res.status(error.status || 500).json({ message: "Internal Server Error" });
+});
 
 
 const PORT = process.env.PORT;
 
-connectDB();
+const startServer = async () => {
+  try {
+    // Do not accept API requests until MongoDB is ready. This prevents the
+    // first registration request from waiting on an in-progress DB connection.
+    await connectDB();
 
-app.listen(PORT, () => {
-    console.log(`Server Running at ${PORT}`)
-})
+    app.listen(PORT, () => {
+      console.log(`Server Running at ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Unable to start server because the database connection failed.");
+    process.exit(1);
+  }
+};
+
+startServer();

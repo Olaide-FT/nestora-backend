@@ -2,7 +2,7 @@ const sendMail = require("../services/nodemailer");
 
 async function sendOtp(email, otp) {
 
-    await sendMail({
+    return sendMail({
 
         from: process.env.EMAIL,
 

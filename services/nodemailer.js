@@ -7,6 +7,9 @@ const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",    
     port: 587,                 
     secure: false,             
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     auth: {
         user: process.env.EMAIL_USER, 
         pass: process.env.EMAIL_PASS,
@@ -18,7 +21,7 @@ const transporter = nodemailer.createTransport({
 async function sendMail({ to, subject, text, html }) {
   try {
     const info = await transporter.sendMail({
-      from: `"${process.env.EMAIL_NAME || 'Reedah'}" <${process.env.EMAIL_USER}>`,
+      from: `"${process.env.EMAIL_NAME || 'Nestora'}" <${process.env.EMAIL_USER}>`,
       to,
       subject,
       text,
@@ -27,7 +30,7 @@ async function sendMail({ to, subject, text, html }) {
     return { success: true, messageId: info.messageId };
   } catch (error) {
     console.error("Email send failed:", error);
-    return { success: false, error: error.message };
+    throw error;
   }
 }
 

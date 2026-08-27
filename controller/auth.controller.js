@@ -1,17 +1,21 @@
 const bcrypt = require("bcryptjs");
 const User = require("../models/user.model");
+const TokenBlocklist = require("../models/tokenBlocklist.model");
 const generateToken = require("../utils/generateToken");
 const sendMail = require("../services/nodemailer");
 const sendOtp = require("../utils/sendOtp");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 
 const normalizeOtp = (value) => String(value ?? "").trim();
+const hashOtp = (otp) => crypto.createHash("sha256").update(normalizeOtp(otp)).digest("hex");
 
 const register = async (req, res) => {
     try {
         const { firstName, lastName, email, password, phone, role, } = req.body;
+        const normalizedEmail = String(email || "").trim().toLowerCase();
 
-        if (!firstName || !lastName || !email || !password || !phone) {
+        if (!firstName || !lastName || !normalizedEmail || !password || !phone) {
             return res.status(400).json({ message: "All fields are required" });
         }
 
@@ -19,7 +23,7 @@ const register = async (req, res) => {
             return res.status(400).json({ message: "Password must be at least 6 characters", });
         }
 
-        const existingUser = await User.findOne({ email });
+        const existingUser = await User.findOne({ email: normalizedEmail });
 
         if (existingUser) {
             return res.status(409).json({ message: "Email already registered" });
@@ -34,21 +38,27 @@ const register = async (req, res) => {
         const user = await User.create({
             firstName,
             lastName,
-            email,
+            email: normalizedEmail,
             password: hashedPassword,
             phone,
             role: userRole,
-            otp,
+            otp: hashOtp(otp),
             otpExpiresAt: otpExpires,
             isVerified: false
         });
 
-        await sendOtp(email, otp)
+        // SMTP delivery can be slow. The account and OTP are already safely
+        // stored, so let the client continue to verification immediately.
+        // A failed delivery is logged and the user can request a new OTP.
+        void sendOtp(normalizedEmail, otp)
+            .catch((error) => {
+                console.error("Failed to send registration OTP:", error.message);
+            });
 
         res.status(201).json({ message: "Registration successful. Please check your email for OTP." });
 
     } catch (error) {
-        console.log(error)
+        console.error("Register error:", error)
         res.status(500).json({ message: "Internal Server Error" })
     }
 }
@@ -72,23 +82,7 @@ const login = async (req, res) => {
             return res.status(403).json({ message: "Your account has been deactivated" });
         }
 
-        // const isPasswordCorrect = await bcrypt.compare(password, user.password);
-
-        console.log("Email:", email);
-        console.log("User:", user.email);
-        console.log("Password entered:", password);
-        console.log("Password from DB:", user.password);
-
-        const isPasswordCorrect =
-            await bcrypt.compare(
-                password,
-                user.password
-            );
-
-        console.log(
-            "Password correct:",
-            isPasswordCorrect
-        );
+        const isPasswordCorrect = await bcrypt.compare(password, user.password);
 
         if (!isPasswordCorrect) {
             return res.status(401).json({ message: "Invalid email or password" });
@@ -98,16 +92,7 @@ const login = async (req, res) => {
             return res.status(403).json({ message: "Please verify your email before logging in" });
         }
 
-        const token = jwt.sign(
-            {
-                userId: user._id,
-                role: user.role
-            },
-            process.env.JWT_SECRET,
-            {
-                expiresIn: "7d"
-            }
-        );
+        const token = generateToken(user);
 
         res.status(200).json({
             message: "Login successful",
@@ -149,7 +134,9 @@ const verifyEmail = async (req, res) => {
             return res.status(400).json({ message: "Email already verified" });
         }
 
-        if (!user.otp || normalizeOtp(user.otp) !== normalizedOtp) {
+        // The fallback supports unverified accounts created before OTP hashing
+        // was introduced; newly issued OTPs are always stored as hashes.
+        if (!user.otp || (user.otp !== hashOtp(normalizedOtp) && normalizeOtp(user.otp) !== normalizedOtp)) {
             return res.status(400).json({ message: "Invalid OTP" });
         }
 
@@ -162,7 +149,14 @@ const verifyEmail = async (req, res) => {
         user.otpExpiresAt = undefined;
 
         await user.save();
-        await sendMail(user.email, "Your email has been verified");
+        void sendMail({
+            to: user.email,
+            subject: "Email Verified Successfully",
+            text: "Your email has been verified. You can now log in to your Nestora account.",
+            html: `<p>Hi ${user.firstName},</p><p>Your email has been verified successfully. You can now <a href="${process.env.CLIENT_URL}/login">log in</a> to your Nestora account.</p>`,
+        }).catch((error) => {
+            console.error("Failed to send verification confirmation:", error.message);
+        });
 
         res.status(200).json({ message: "Email verified successfully. You can now login." });
 
@@ -173,32 +167,31 @@ const verifyEmail = async (req, res) => {
 
 const regenerateOtp = async (req, res) => {
     try {
-        const { email } = req.body;
-        if (!email) {
-            res.status(403).send("Invalid Email")
+        const normalizedEmail = String(req.body.email || "").trim().toLowerCase();
+        if (!normalizedEmail) {
+            return res.status(400).json({ message: "Email is required" });
         }
 
-        const regenerate = await User.findOne({ email });
+        const regenerate = await User.findOne({ email: normalizedEmail });
 
         if (!regenerate) {
-            res.status(404).json({ message: "User Not Found" })
+            return res.status(404).json({ message: "User Not Found" });
         }
 
-        const otp = String(Math.floor(1000 + Math.random() * 9000)).padStart(4, "0");
+        const otp = String(Math.floor(Math.random() * 1000000)).padStart(6, "0");
 
-        regenerate.otp = otp;
+        regenerate.otp = hashOtp(otp);
         regenerate.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
         await regenerate.save();
 
-        await sendOtp(email, otp)
+        await sendOtp(normalizedEmail, otp);
 
-        return res.status(200).json({ message: "A new oTP has been sent to your email" });
+        return res.status(200).json({ message: "A new OTP has been sent to your email" });
 
     } catch (error) {
-        console.log(error);
-
-        res.status(500).json({ message: "Internal Server Error", });
+        console.error("Regenerate OTP error:", error);
+        res.status(502).json({ message: "Unable to send OTP. Please check your email address or try again later." });
     }
 };
 
@@ -265,7 +258,7 @@ const updateProfile = async (req, res) => {
             isVerified: user.isVerified,
         };
 
-        console.log('Profile updated for user:', safeUser);
+        console.log('Profile updated for user:', safeUser.email);
         res.status(200).json({
             message: "Profile updated successfully",
             user: safeUser,
@@ -278,7 +271,33 @@ const updateProfile = async (req, res) => {
 
 
 const logout = async (req, res) => {
-    return res.status(200).json({ message: "Logout successful" });
+    try {
+        const authHeader = req.headers.authorization;
+
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+            const token = authHeader.split(" ")[1];
+
+            // Decode without verifying so we can still read exp even if the
+            // token is close to expiry or already expired client-side.
+            const decoded = jwt.decode(token);
+
+            if (decoded?.exp) {
+                // Store the token in the blocklist until its natural expiry.
+                // MongoDB's TTL index will remove the document automatically.
+                await TokenBlocklist.create({
+                    token,
+                    expiresAt: new Date(decoded.exp * 1000),
+                });
+            }
+        }
+
+        return res.status(200).json({ message: "Logout successful" });
+    } catch (error) {
+        // Even if blocklisting fails, complete the logout so the client
+        // clears its token. Log the failure for investigation.
+        console.error("Logout blocklist error:", error);
+        return res.status(200).json({ message: "Logout successful" });
+    }
 };
 
 

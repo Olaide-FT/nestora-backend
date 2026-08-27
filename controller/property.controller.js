@@ -2,6 +2,41 @@ const jwt = require("jsonwebtoken");
 const Property = require("../models/property.model");
 const uploadToCloudinary = require("../utils/uploadToCloudinary");
 
+const MAX_IMAGES = 10;
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const normalizeImageUrls = (value) => {
+    const values = Array.isArray(value) ? value : value ? [value] : [];
+
+    return values.map((image) => {
+        if (typeof image !== "string" || !image.trim()) {
+            throw new Error("Each image URL must be a non-empty string");
+        }
+
+        const url = new URL(image.trim());
+        if (!["http:", "https:"].includes(url.protocol)) {
+            throw new Error("Image URLs must use HTTP or HTTPS");
+        }
+
+        return url.toString();
+    });
+};
+
+const resolveImages = async (req, bodyImages) => {
+    const images = normalizeImageUrls(bodyImages);
+
+    for (const file of req.files || []) {
+        const result = await uploadToCloudinary(file.buffer);
+        images.push(result.secure_url);
+    }
+
+    if (images.length > MAX_IMAGES) {
+        throw new Error(`A property can have at most ${MAX_IMAGES} images`);
+    }
+
+    return images;
+};
+
 const getRequestUser = (req) => {
     const authHeader = req.headers.authorization;
 
@@ -47,21 +82,11 @@ const createProperty = async (req, res) => {
             return res.status(400).json({message: "Price cannot be negative"});
         }
 
-        const images = [];
-
-        if (Array.isArray(bodyImages) && bodyImages.length > 0) {
-            bodyImages
-                .filter((image) => typeof image === "string" && image.trim())
-                .forEach((image) => images.push(image.trim()));
-        }
-
-        if (req.files && req.files.length > 0) {
-            for (const file of req.files) {
-                const result =
-                    await uploadToCloudinary(file.buffer);
-
-                images.push(result.secure_url);
-            }
+        let images;
+        try {
+            images = await resolveImages(req, bodyImages);
+        } catch (error) {
+            return res.status(400).json({ message: error.message });
         }
 
         let parsedAmenities = [];
@@ -117,6 +142,7 @@ const getProperties = async (req, res) => {
     try {
         const {
             search,
+            location,
             listingType,
             propertyType,
             city,
@@ -132,27 +158,27 @@ const getProperties = async (req, res) => {
 
         const filter = {
             approvalStatus: "approved",
-            availabilityStatus: "available",
         };
 
         // Search by title, city, or state
-        if (search) {
+        const searchTerm = search || location;
+        if (searchTerm) {
             filter.$or = [
                 {
                     title: {
-                        $regex: search,
+                        $regex: escapeRegex(searchTerm),
                         $options: "i",
                     },
                 },
                 {
                     city: {
-                        $regex: search,
+                        $regex: escapeRegex(searchTerm),
                         $options: "i",
                     },
                 },
                 {
                     state: {
-                        $regex: search,
+                        $regex: escapeRegex(searchTerm),
                         $options: "i",
                     },
                 },
@@ -168,11 +194,11 @@ const getProperties = async (req, res) => {
         }
 
         if (city) {
-            filter.city = { $regex: city, $options: "i"};
+            filter.city = { $regex: escapeRegex(city), $options: "i"};
         }
 
         if (state) {
-            filter.state = {$regex: state,$options: "i"};
+            filter.state = {$regex: escapeRegex(state),$options: "i"};
         }
 
         if (minPrice || maxPrice) {
@@ -257,9 +283,7 @@ const getProperty = async (req, res) => {
             return res.status(404).json({ message: "Property not found" });
         }
 
-        const isPubliclyVisible =
-            property.approvalStatus === "approved" &&
-            property.availabilityStatus === "available";
+        const isPubliclyVisible = property.approvalStatus === "approved";
 
         const isAuthorizedViewer =
             currentUser && (
@@ -350,6 +374,16 @@ const updateProperty = async (req, res) => {
             }
         });
 
+        // When the form includes image data, replace the gallery with the
+        // submitted URLs and newly uploaded Cloudinary files.
+        if (req.body.images !== undefined || (req.files && req.files.length > 0)) {
+            try {
+                property.images = await resolveImages(req, req.body.images);
+            } catch (error) {
+                return res.status(400).json({ message: error.message });
+            }
+        }
+
         if (req.body.price !== undefined && Number(req.body.price) < 0) {
             return res.status(400).json({message:"Price cannot be negative"});
         }
@@ -424,7 +458,11 @@ const deleteProperty = async (req, res) => {
             });
         }
 
-        if (property.owner.toString() !==req.user.userId.toString()) {
+        // Admins can delete any property; owners can only delete their own.
+        const isOwner = property.owner.toString() === req.user.userId.toString();
+        const isAdmin = req.user.role === "admin";
+
+        if (!isOwner && !isAdmin) {
             return res.status(403).json({message:"You are not authorized to delete this property"});
         }
 
