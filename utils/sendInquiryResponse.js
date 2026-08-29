@@ -7,7 +7,7 @@ const sendInquiryResponseEmail = async (inquiry, response) => {
             to: inquiry.buyer.email,
 
             subject:
-                "Property Owner Responded - PropertyHub",
+                "Property Owner Responded - Nestora",
 
             html: `
                     <h2>Property Owner Responded</h2>

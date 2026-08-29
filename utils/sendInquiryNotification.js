@@ -6,7 +6,7 @@ const sendInquiryEmail = async (property, buyer, message) => {
         await sendMail({
             to: property.owner.email,
             subject:
-                "New Property Inquiry - PropertyHub",
+                "New Property Inquiry - Nestora",
             html: `
                     <h2>New Property Inquiry</h2>
 

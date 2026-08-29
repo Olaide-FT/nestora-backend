@@ -22,26 +22,7 @@ app.use(express.json())
 app.use(morgan("dev"))
 app.use(express.urlencoded({ extended: true }));
 
-// Allow requests only from known frontend origins.
-// In production CLIENT_URL is set via environment variable.
-// In development both the Vite dev server and localhost variants are allowed.
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:5174",
-  process.env.CLIENT_URL,
-].filter(Boolean); // remove undefined if CLIENT_URL is not set
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. curl, Postman, server-to-server)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      callback(new Error(`CORS policy: origin ${origin} is not allowed`));
-    },
-    credentials: true,
-  })
-);
+app.use(cors());
 
 // Strict limiter for sensitive auth endpoints — 10 attempts per 15 minutes per IP.
 // Prevents brute-force attacks on login, registration, and OTP endpoints.
@@ -88,7 +69,7 @@ app.use((error, req, res, next) => {
     return res.status(400).json({ message: error.message });
   }
 
-  return res.status(error.status || 500).json({ message: "Internal Server Error" });
+  return res.status(500).json({ message: "Internal Server Error" });
 });
 
 
