@@ -1,5 +1,7 @@
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
 const Property = require("../models/property.model");
+const User = require("../models/user.model");
 const uploadToCloudinary = require("../utils/uploadToCloudinary");
 
 const MAX_IMAGES = 10;
@@ -78,8 +80,20 @@ const createProperty = async (req, res) => {
             return res.status(400).json({message:"Please provide all required property fields"});
         }
 
+        if (!Number.isFinite(Number(price))) {
+            return res.status(400).json({message: "Price must be a valid number"});
+        }
+
         if (Number(price) < 0) {
             return res.status(400).json({message: "Price cannot be negative"});
+        }
+
+        if (
+            (bedrooms !== undefined && bedrooms !== "" && !Number.isFinite(Number(bedrooms))) ||
+            (bathrooms !== undefined && bathrooms !== "" && !Number.isFinite(Number(bathrooms))) ||
+            (squareFootage !== undefined && squareFootage !== "" && !Number.isFinite(Number(squareFootage)))
+        ) {
+            return res.status(400).json({ message: "Numeric property details are invalid" });
         }
 
         let images;
@@ -132,7 +146,11 @@ const createProperty = async (req, res) => {
 
         res.status(201).json({message: "Property created successfully",property});
     } catch (error) {
-        console.error("Create Property Error:",error);
+        console.error("Create Property Error:", error);
+
+        if (error.name === "ValidationError" || error.name === "CastError") {
+            return res.status(400).json({ message: error.message });
+        }
 
         res.status(500).json({message: "Failed to create property"});
     }
@@ -156,9 +174,7 @@ const getProperties = async (req, res) => {
             limit = 12,
         } = req.query;
 
-        const filter = {
-            approvalStatus: "approved",
-        };
+        const filter = {approvalStatus: "approved"};
 
         // Search by title, city, or state
         const searchTerm = search || location;
@@ -319,6 +335,65 @@ const getProperty = async (req, res) => {
     }
 };
 
+const getOwnerProfile = async (req, res) => {
+    try {
+        const { ownerId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(ownerId)) {
+            return res.status(404).json({ message: "Seller not found" });
+        }
+
+        // Match the visibility rule used by the public property-details page.
+        // Older approved records may not have an availabilityStatus field.
+        const properties = await Property.find({
+            owner: ownerId,
+            approvalStatus: "approved",
+        })
+            .populate("owner", "firstName lastName email phone")
+            .sort({ createdAt: -1 });
+
+        // If the owner has approved listings, return their profile normally.
+        if (properties.length) {
+            return res.status(200).json({
+                owner: properties[0].owner,
+                count: properties.length,
+                properties,
+            });
+        }
+
+        // Fallback: the seller may exist but simply have no approved listings
+        // yet (e.g. all are pending/rejected). Look up the user directly so
+        // the public seller page can still render their contact info.
+        const seller = await User.findById(ownerId).select("firstName lastName email phone isActive role");
+
+        if (!seller || !seller.isActive) {
+            return res.status(404).json({ message: "Seller not found" });
+        }
+
+        // Only expose owner accounts publicly.
+        if (seller.role !== "owner") {
+            return res.status(404).json({ message: "Seller not found" });
+        }
+
+        const owner = {
+            _id: seller._id,
+            firstName: seller.firstName,
+            lastName: seller.lastName,
+            email: seller.email,
+            phone: seller.phone,
+        };
+
+        return res.status(200).json({
+            owner,
+            count: 0,
+            properties: [],
+        });
+    } catch (error) {
+        console.error("Get Owner Profile Error:", error);
+        return res.status(500).json({ message: "Failed to get seller profile" });
+    }
+};
+
 const getMyProperties = async (req, res) => {
     try {
         const properties =
@@ -374,8 +449,7 @@ const updateProperty = async (req, res) => {
             }
         });
 
-        // When the form includes image data, replace the gallery with the
-        // submitted URLs and newly uploaded Cloudinary files.
+        // When the form includes image data, replace the gallery with the submitted URLs and newly uploaded Cloudinary files.
         if (req.body.images !== undefined || (req.files && req.files.length > 0)) {
             try {
                 property.images = await resolveImages(req, req.body.images);
@@ -480,6 +554,7 @@ module.exports = {
     createProperty,
     getProperties,
     getProperty,
+    getOwnerProfile,
     getMyProperties,
     updateProperty,
     updateAvailabilityStatus,

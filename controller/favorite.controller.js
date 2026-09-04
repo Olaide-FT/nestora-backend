@@ -34,7 +34,7 @@ const addFavorite = async (req, res) => {
 
 const getFavorites = async (req, res) => {
     try {
-        const favorites = await Favorite.find({ user: req.user.userId})
+        const favoriteDocuments = await Favorite.find({ user: req.user.userId})
                 .populate({
                     path: "property",
                     populate: {
@@ -46,6 +46,16 @@ const getFavorites = async (req, res) => {
                 .sort({
                     createdAt: -1,
                 });
+
+        // Do not count dangling favorites whose property was deleted.
+        const favorites = favoriteDocuments.filter((favorite) => favorite.property);
+        const staleFavoriteIds = favoriteDocuments
+            .filter((favorite) => !favorite.property)
+            .map((favorite) => favorite._id);
+
+        if (staleFavoriteIds.length) {
+            await Favorite.deleteMany({ _id: { $in: staleFavoriteIds } });
+        }
 
         res.status(200).json({ count: favorites.length, favorites});
 

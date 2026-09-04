@@ -8,8 +8,8 @@ const createInquiry = async (req, res) => {
     try {
         const { propertyId, message } = req.body;
 
-        if (!propertyId || !message) {
-            return res.status(400).json({message: "Property ID and message are required"});
+        if (!propertyId || typeof message !== "string" || !message.trim()) {
+            return res.status(400).json({message: "Property ID and a message are required"});
         }
 
         // Fetch full buyer profile from DB — JWT payload only carries userId and role,
@@ -31,6 +31,8 @@ const createInquiry = async (req, res) => {
             return res.status(403).json({ message: "You cannot send an inquiry about your own property"});
         }
 
+        
+
         const inquiry =
             await Inquiry.create({
                 property: property._id,
@@ -40,6 +42,7 @@ const createInquiry = async (req, res) => {
                 buyerEmail: buyer.email,
                 status: "new",
             });
+           
 
         await sendInquiryEmail( property, buyer, message.trim());
 

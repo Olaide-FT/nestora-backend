@@ -153,7 +153,20 @@ const verifyEmail = async (req, res) => {
             to: user.email,
             subject: "Email Verified Successfully",
             text: "Your email has been verified. You can now log in to your Nestora account.",
-            html: `<p>Hi ${user.firstName},</p><p>Your email has been verified successfully. You can now <a href="${process.env.CLIENT_URL}/login">log in</a> to your Nestora account.</p>`,
+            html: `
+                <div style="margin:0;padding:32px 16px;background:#f7f5f0;font-family:Arial,sans-serif;color:#17352b;">
+                  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e5e1d8;">
+                    <div style="padding:24px 32px;background:#17352b;color:#ffffff;font-size:24px;font-weight:700;">Nestora</div>
+                    <div style="padding:32px;">
+                      <div style="font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#c9a45c;">Account verified</div>
+                      <h1 style="margin:12px 0 16px;font-size:28px;color:#17352b;">Welcome to Nestora</h1>
+                      <p style="font-size:15px;line-height:1.6;color:#63736c;">Hi ${user.firstName}, your email has been verified successfully. You can now access your account.</p>
+                      <a href="${process.env.CLIENT_URL}/login" style="display:inline-block;margin-top:20px;padding:13px 22px;background:#c9a45c;color:#0d1713;text-decoration:none;border-radius:6px;font-size:14px;font-weight:700;">Log in to Nestora</a>
+                    </div>
+                    <div style="padding:18px 32px;border-top:1px solid #e5e1d8;font-size:12px;color:#8a9790;">© ${new Date().getFullYear()} Nestora</div>
+                  </div>
+                </div>
+            `,
         }).catch((error) => {
             console.error("Failed to send verification confirmation:", error.message);
         });

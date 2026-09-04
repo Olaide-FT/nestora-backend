@@ -1,7 +1,7 @@
 const express = require("express");
 const Property = require("../models/property.model");
 
-const {createProperty,getProperties,getProperty,getMyProperties,updateProperty,deleteProperty, updateAvailabilityStatus,} = require("../controller/property.controller");
+const {createProperty,getProperties,getProperty,getOwnerProfile,getMyProperties,updateProperty,deleteProperty, updateAvailabilityStatus,} = require("../controller/property.controller");
 
 const protect = require("../middleware/auth.middleware");
 const authorize = require("../middleware/authorize");
@@ -10,6 +10,10 @@ const upload = require("../middleware/upload.middleware");
 const router = express.Router();
 
 router.get("/", getProperties);
+
+router.get("/owners/:ownerId", getOwnerProfile);
+router.get("/owner/:ownerId", getOwnerProfile);
+router.get("/seller/:ownerId", getOwnerProfile);
 
 router.get("/:id", getProperty);
 

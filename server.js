@@ -43,15 +43,25 @@ const generalLimiter = rateLimit({
   message: { message: "Too many requests, please slow down" },
 });
 
+// Property browsing can trigger several read requests while users search,
+// paginate, and open details. Keep write/admin APIs on the stricter limit.
+const propertyBrowseLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many property requests, please try again shortly" },
+});
+
 app.use('/api', userRoutes);
 app.use("/api/auth/register", authLimiter);
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/verify-email", authLimiter);
 app.use("/api/auth/regenerate-otp", authLimiter);
 app.use("/api/auth", authRoutes);
-app.use("/api/properties", generalLimiter, propertyRoutes);
+app.use("/api/properties", propertyBrowseLimiter, propertyRoutes);
 app.use("/api/favorites", generalLimiter, favoriteRoutes);
-app.use("/api/admin", generalLimiter, adminRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api/inquiries", generalLimiter, inquiryRoutes);
 
 app.use((req, res) => {

@@ -19,7 +19,6 @@ const favoriteSchema = new mongoose.Schema(
     }
 );
 
-// Prevent the same buyer from saving the same property more than once
 favoriteSchema.index(
     { user: 1, property: 1 },
     { unique: true }
