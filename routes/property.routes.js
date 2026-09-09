@@ -11,6 +11,7 @@ const router = express.Router();
 
 router.get("/", getProperties);
 
+router.get("/owner/my-properties",protect,authorize("owner"),getMyProperties);
 router.get("/owners/:ownerId", getOwnerProfile);
 router.get("/owner/:ownerId", getOwnerProfile);
 router.get("/seller/:ownerId", getOwnerProfile);
@@ -18,8 +19,6 @@ router.get("/seller/:ownerId", getOwnerProfile);
 router.get("/:id", getProperty);
 
 router.post("/create",protect,authorize("owner"),upload.array("images", 10),createProperty);
-
-router.get("/owner/my-properties",protect,authorize("owner"),getMyProperties);
 
 router.put("/:id",protect,authorize("owner"),upload.array("images", 10),updateProperty);
 
