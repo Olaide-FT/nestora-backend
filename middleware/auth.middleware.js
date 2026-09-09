@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const TokenBlocklist = require("../models/tokenBlocklist.model");
+const hashToken = require("../utils/hashToken");
 
 const protect = async (req, res, next) => {
     try {
@@ -16,7 +17,7 @@ const protect = async (req, res, next) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
         // Reject tokens that have been explicitly invalidated via logout.
-        const isBlocklisted = await TokenBlocklist.exists({ token });
+        const isBlocklisted = await TokenBlocklist.exists({ token: hashToken(token) });
         if (isBlocklisted) {
             return res.status(401).json({
                 message: "Invalid or expired session"

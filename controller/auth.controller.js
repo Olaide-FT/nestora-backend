@@ -4,6 +4,7 @@ const TokenBlocklist = require("../models/tokenBlocklist.model");
 const generateToken = require("../utils/generateToken");
 const sendMail = require("../services/nodemailer");
 const sendOtp = require("../utils/sendOtp");
+const hashToken = require("../utils/hashToken");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 
@@ -32,9 +33,6 @@ const register = async (req, res) => {
         const userRole = role === "owner" ? "owner" : "buyer";
 
         const hashedPassword = await bcrypt.hash(password, 10);
-        const otp = String(Math.floor(Math.random() * 1000000)).padStart(6, "0");
-        const otpExpires = new Date(Date.now() + 5 * 60 * 1000);
-
         const user = await User.create({
             firstName,
             lastName,
@@ -42,20 +40,10 @@ const register = async (req, res) => {
             password: hashedPassword,
             phone,
             role: userRole,
-            otp: hashOtp(otp),
-            otpExpiresAt: otpExpires,
-            isVerified: false
+            isVerified: true
         });
 
-        // SMTP delivery can be slow. The account and OTP are already safely
-        // stored, so let the client continue to verification immediately.
-        // A failed delivery is logged and the user can request a new OTP.
-        void sendOtp(normalizedEmail, otp)
-            .catch((error) => {
-                console.error("Failed to send registration OTP:", error.message);
-            });
-
-        res.status(201).json({ message: "Registration successful. Please check your email for OTP." });
+        res.status(201).json({ message: "Registration successful. You can now log in." });
 
     } catch (error) {
         console.error("Register error:", error)
@@ -295,10 +283,8 @@ const logout = async (req, res) => {
             const decoded = jwt.decode(token);
 
             if (decoded?.exp) {
-                // Store the token in the blocklist until its natural expiry.
-                // MongoDB's TTL index will remove the document automatically.
                 await TokenBlocklist.create({
-                    token,
+                    token: hashToken(token),
                     expiresAt: new Date(decoded.exp * 1000),
                 });
             }
